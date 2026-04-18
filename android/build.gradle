@@ -1,0 +1,40 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+allprojects {
+    tasks.withType(JavaCompile).configureEach {
+        sourceCompatibility = '1.8'
+        targetCompatibility = '1.8'
+    }
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "1.8"
+        }
+    }
+}
+
+subprojects {
+    project.plugins.withType(com.android.build.gradle.BasePlugin).configureEach {
+        project.android {
+            if (project.android.hasProperty('namespace') && project.android.namespace == null) {
+                project.android.namespace = "com.remmber.auto_fix.${project.name.replaceAll("-", "_")}"
+            }
+        }
+    }
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
