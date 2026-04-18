@@ -1,0 +1,24 @@
+workflows:
+  ios-release:
+    name: Sovereign Archive iOS Release
+    max_build_duration: 60
+    instance_type: mac_mini_m1
+    environment:
+      flutter: stable
+      groups:
+        - apple_signing # Required for IPA generation
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter packages pub get
+      - name: Build iOS IPA
+        script: |
+          # Build a release .ipa without code signing for initial testing 
+          # Or full signed if groups are configured
+          flutter build ipa --release --no-codesign
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      email:
+        recipients:
+          - sovereign@archive.local # Replace with your email in Codemagic UI
