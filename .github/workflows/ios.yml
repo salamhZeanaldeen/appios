@@ -33,7 +33,22 @@ jobs:
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
 
-      - name: Build with Direct Xcode Command (The Ultimate Bypass)
+      - name: Inject Podfile Overrides
+        run: |
+          # 2. Ensure Podfile exists and append the 'No Sign' and 'iOS 13' rules
+          # We do this after pub get so the file is likely there or will be generated
+          echo "post_install do |installer|" >> ios/Podfile
+          echo "  installer.pods_project.targets.each do |target|" >> ios/Podfile
+          echo "    target.build_configurations.each do |config|" >> ios/Podfile
+          echo "      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'" >> ios/Podfile
+          echo "      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'" >> ios/Podfile
+          echo "      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'" >> ios/Podfile
+          echo "      config.build_settings['CODE_SIGN_IDENTITY'] = ''" >> ios/Podfile
+          echo "    end" >> ios/Podfile
+          echo "  end" >> ios/Podfile
+          echo "end" >> ios/Podfile
+
+      - name: Build with Direct Xcode Command (The Total Podforce Bypass)
         run: |
           # 2. Run flutter build ios only to generate frameworks/assets, ignore failure
           flutter build ios --release --no-codesign || true
