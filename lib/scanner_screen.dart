@@ -1,9 +1,10 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' if (dart.library.html) 'package:sqflite/sqflite.dart' show File;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:intl/intl.dart' as intl;
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart' if (dart.library.html) 'package:provider/provider.dart'; 
 import 'package:provider/provider.dart';
 import 'local_storage_service.dart';
 import 'document_provider.dart';
@@ -19,9 +20,8 @@ class ScannerScreen extends StatefulWidget {
 class _ScannerScreenState extends State<ScannerScreen> {
   final _formKey = GlobalKey<FormState>();
   final ImagePicker _picker = ImagePicker();
-  final TextRecognizer _textRecognizer = TextRecognizer();
   
-  File? _image;
+  dynamic _image; // Use dynamic to support File or XFile
   String _title = '';
   String _type = 'وارد';
   String _ocrText = '';
@@ -32,43 +32,64 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   void dispose() {
-    _textRecognizer.close();
+    // recognizer is initialized conditionally
     super.dispose();
   }
 
   Future<void> _pickImage(ImageSource source) async {
-    final XFile? pickedFile = await _picker.pickImage(
-      source: source,
-      imageQuality: 90,
-    );
-    if (pickedFile != null) {
-      setState(() {
-        _image = File(pickedFile.path);
-        _isProcessing = true;
-      });
-      
-      // Perform local OCR instantly
-      _processImage(_image!);
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: source,
+        imageQuality: 90,
+      );
+      if (pickedFile != null) {
+        setState(() {
+          _image = kIsWeb ? pickedFile : File(pickedFile.path);
+          _isProcessing = true;
+        });
+        
+        // Perform local OCR only on non-web platforms
+        if (!kIsWeb) {
+          _processImage(File(pickedFile.path));
+        } else {
+          setState(() {
+            _ocrText = 'التعرف الآلي متاح حالياً على نسخة الهاتف فقط. يرجى إدخال البيانات يدوياً.';
+            _isProcessing = false;
+          });
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في اختيار الصورة: $e')));
     }
   }
 
   Future<void> _pickFile() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-    );
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+      );
 
-    if (result != null) {
-      File file = File(result.files.single.path!);
-      setState(() {
-        _image = file;
-        if (file.path.toLowerCase().endsWith('.pdf')) {
-          _ocrText = 'تم اختيار ملف PDF. سيتم استخراج النصوص على السيرفر.';
-        } else {
-          _isProcessing = true;
-          _processImage(file);
-        }
-      });
+      if (result != null) {
+        setState(() {
+          if (kIsWeb) {
+            _image = result.files.single; // On web, we have the file data
+          } else {
+            _image = File(result.files.single.path!);
+          }
+          
+          if (result.files.single.name.toLowerCase().endsWith('.pdf')) {
+            _ocrText = 'تم اختيار ملف PDF. سيتم استخراج النصوص عند المعالجة.';
+          } else if (!kIsWeb) {
+            _isProcessing = true;
+            _processImage(_image as File);
+          } else {
+            _ocrText = 'المسح الضوئي متاح على نسخة الهاتف. يرجى إدخال العنوان يدوياً.';
+          }
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في اختيار الملف: $e')));
     }
   }
 
@@ -93,6 +114,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 
   Future<void> _processImage(File imageFile) async {
+    // Only compile/run on native
+    if (kIsWeb) return;
+    
+    final _textRecognizer = TextRecognizer();
     final inputImage = InputImage.fromFile(imageFile);
     try {
       final recognizedText = await _textRecognizer.processImage(inputImage);
@@ -100,6 +125,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
         _ocrText = recognizedText.text;
         _isProcessing = false;
       });
+      await _textRecognizer.close();
     } catch (e) {
       print('OCR Error: $e');
       setState(() => _isProcessing = false);
@@ -121,7 +147,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       final storage = LocalStorageService();
       
       // 1. Save image permanently in app documents directory
-      final String localImagePath = await storage.saveImageLocally(_image!);
+      final String localImagePath = await storage.saveImageLocally(_image);
 
       // 2. Prepare document data
       final Map<String, dynamic> docData = {
@@ -139,7 +165,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       await docProvider.addDocument(docData);
 
       // 4. Schedule notification if deadline exists
-      if (_deadline != null) {
+      if (_deadline != null && !kIsWeb) {
         await NotificationManager().scheduleDeadlineAlert(
           id: DateTime.now().millisecond,
           title: _title,
@@ -149,14 +175,14 @@ class _ScannerScreenState extends State<ScannerScreen> {
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ تم الحفظ في أرشيفك المحلي بنجاح')),
+          const SnackBar(content: Text('✅ تم الحفظ في أرشيفك بنجاح')),
         );
         Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ في الحفظ المحلي: $e')),
+          SnackBar(content: Text('خطأ في الحفظ: $e')),
         );
       }
     } finally {
@@ -201,7 +227,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('النص المستخرج محلياً:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue)),
+                      const Text('ملاحظة المعالجة:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.blue)),
                       const SizedBox(height: 8),
                       Text(_ocrText, maxLines: 5, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.white60)),
                     ],
@@ -223,7 +249,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
               const SizedBox(height: 32),
               ElevatedButton(
                 onPressed: _isUploading || _isProcessing ? null : _saveLocally,
-                child: _isUploading ? const CircularProgressIndicator() : const Text('حفظ في الأرشيف المحلي'),
+                child: _isUploading ? const CircularProgressIndicator() : const Text('حفظ في الأرشيف'),
               ),
             ],
           ),
@@ -251,19 +277,24 @@ class _ScannerScreenState extends State<ScannerScreen> {
                   Text('اضغط لتصوير المراسلة', style: TextStyle(color: Colors.white54, fontSize: 12)),
                 ],
               )) 
-            : _image!.path.toLowerCase().endsWith('.pdf')
-              ? const Center(child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.picture_as_pdf, size: 64, color: Colors.redAccent),
-                    SizedBox(height: 8),
-                    Text('تم اختيار ملف PDF', style: TextStyle(color: Colors.white70)),
-                  ],
-                ))
-              : ClipRRect(
+            : kIsWeb 
+              ? ClipRRect(
                   borderRadius: BorderRadius.circular(20),
-                  child: Image.file(_image!, fit: BoxFit.contain)
-                ),
+                  child: Image.network(_image.path, fit: BoxFit.contain)
+                )
+              : _image!.path.toLowerCase().endsWith('.pdf')
+                ? const Center(child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.picture_as_pdf, size: 64, color: Colors.redAccent),
+                      SizedBox(height: 8),
+                      Text('تم اختيار ملف PDF', style: TextStyle(color: Colors.white70)),
+                    ],
+                  ))
+                : ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.file(_image! as File, fit: BoxFit.contain)
+                  ),
       ),
     );
   }

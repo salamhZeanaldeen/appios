@@ -1,4 +1,5 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:io' if (dart.library.html) 'package:sqflite/sqflite.dart' show File; // Safe import for kIsWeb
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:share_plus/share_plus.dart';
@@ -66,10 +67,16 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
   Future<void> _shareFile(String localPath) async {
     setState(() => _isDownloading = true);
     try {
-      if (await File(localPath).exists()) {
-        await Share.shareXFiles([XFile(localPath)], text: 'مشاركة مراسلة: ${_currentDoc['title']}');
+      if (kIsWeb) {
+        // On web, share as text/link or simple share
+        await Share.share('مشاركة مراسلة: ${_currentDoc['title']}\n$localPath');
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الملف غير موجود محلياً')));
+        final file = File(localPath);
+        if (await file.exists()) {
+          await Share.shareXFiles([XFile(localPath)], text: 'مشاركة مراسلة: ${_currentDoc['title']}');
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الملف غير موجود محلياً')));
+        }
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في المشاركة: $e')));
@@ -93,13 +100,15 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
 
       // Handle Notifications
       if (_currentStatus == 'تم الإنجاز') {
-        await NotificationManager().cancelNotification(_currentDoc['id']);
+        if (!kIsWeb) await NotificationManager().cancelNotification(_currentDoc['id']);
       } else if (_selectedDeadline != null) {
-        await NotificationManager().scheduleDeadlineAlert(
-          id: _currentDoc['id'],
-          title: _titleController.text,
-          deadline: _selectedDeadline!,
-        );
+        if (!kIsWeb) {
+          await NotificationManager().scheduleDeadlineAlert(
+            id: _currentDoc['id'],
+            title: _titleController.text,
+            deadline: _selectedDeadline!,
+          );
+        }
       }
 
       setState(() {
@@ -262,15 +271,25 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       borderRadius: BorderRadius.circular(20),
       child: InteractiveViewer(
         maxScale: 5.0,
-        child: Image.file(
-          File(localPath),
-          fit: BoxFit.contain,
-          width: double.infinity,
-          errorBuilder: (context, error, stackTrace) => Container(
-            height: 200, color: Colors.white10, 
-            child: const Center(child: Icon(Icons.broken_image, color: Colors.white24))
+        child: kIsWeb 
+          ? Image.network(
+            localPath,
+            fit: BoxFit.contain,
+            width: double.infinity,
+            errorBuilder: (context, error, stackTrace) => Container(
+              height: 200, color: Colors.white10, 
+              child: const Center(child: Icon(Icons.broken_image, color: Colors.white24))
+            ),
+          )
+          : Image.file(
+            File(localPath),
+            fit: BoxFit.contain,
+            width: double.infinity,
+            errorBuilder: (context, error, stackTrace) => Container(
+              height: 200, color: Colors.white10, 
+              child: const Center(child: Icon(Icons.broken_image, color: Colors.white24))
+            ),
           ),
-        ),
       ),
     );
   }

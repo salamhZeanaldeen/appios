@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
 class ApiService {
@@ -41,7 +41,7 @@ class ApiService {
   Future<bool> uploadDocument({
     required String title,
     required String type,
-    required File file,
+    required dynamic file, // Dynamic to support File or XFile/Bytes
     String? deadline,
     String? alertAt,
   }) async {
@@ -57,10 +57,20 @@ class ApiService {
       request.fields['alert_at'] = alertAt;
     }
 
-    request.files.add(await http.MultipartFile.fromPath(
-      'file',
-      file.path,
-    ));
+    if (kIsWeb) {
+      // On web, we might have bytes or a path that needs special handling
+      // For now, assuming ImagePicker/FilePicker provides accessible data
+      request.files.add(http.MultipartFile.fromBytes(
+        'file',
+        await (file as dynamic).readAsBytes(),
+        filename: 'upload_web.jpg',
+      ));
+    } else {
+      request.files.add(await http.MultipartFile.fromPath(
+        'file',
+        (file as dynamic).path,
+      ));
+    }
 
     final response = await request.send();
     return response.statusCode == 200 || response.statusCode == 201;
