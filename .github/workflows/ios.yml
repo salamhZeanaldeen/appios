@@ -21,36 +21,35 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Deep Injection - Disable Signing
+      - name: Hard-Reset Signing and Bundle ID
         run: |
-          # 1. Inject No-Sign rules directly into Xcode Configuration files
-          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
-          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
-          
-          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Debug.xcconfig
-          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Debug.xcconfig
-          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Debug.xcconfig
-
-          # 2. Force Bundle ID and strip any remaining Team IDs
+          # 1. Force a unique Bundle ID and strip all signing requirements
           find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
           find . -name "*.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;//g' {} +
           find . -name "*.pbxproj" -exec sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;//g' {} +
+          
+          # Inject rules into xcconfig files for ultimate persistence
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
 
-      - name: Build iOS App (.app)
-        env:
-          CODE_SIGNING_ALLOWED: NO
-          CODE_SIGNING_REQUIRED: NO
-          CODE_SIGN_IDENTITY: ""
+      - name: Build with Direct Xcode Command (The Ultimate Bypass)
         run: |
-          # 3. Build with absolute 'No Sign' enforcement
-          flutter build ios --release --no-codesign --build-number=1 --build-name=1.0.0
+          # 2. Run flutter build ios only to generate frameworks/assets, ignore failure
+          flutter build ios --release --no-codesign || true
+
+          # 3. Manually trigger xcodebuild to finish the task without signing checks
+          cd ios
+          xcodebuild build -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" DEVELOPMENT_TEAM=""
 
       - name: Package IPA manually
         run: |
-          # A professional trick: Create a Payload folder and zip the .app into a .ipa
+          # 4. Find the generated .app and package it into a .ipa
           mkdir -p build/ios/iphoneos/Payload
-          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload
+          APP_PATH=$(find build/ios/iphoneos -name "*.app" | head -n 1)
+          cp -r "$APP_PATH" build/ios/iphoneos/Payload/
           cd build/ios/iphoneos
           zip -r SovereignArchive.ipa Payload
 
