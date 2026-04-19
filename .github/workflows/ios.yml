@@ -21,26 +21,26 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Hard-Reset Signing and Dummy Identity
+      - name: Hard-Reset Signing and Dummy Identity (v15 Master)
         run: |
-          # 1. Inject Dummy Team and strip requirements from project files
-          find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
-          find . -name "project.pbxproj" -exec sed -i '' '/buildSettings = {/a \
-          				ProvisioningStyle = Manual; \
-          				DEVELOPMENT_TEAM = "1234567890";' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_IDENTITY = [^;]*;/CODE_SIGN_IDENTITY = "";/g' {} +
+          # 1. Clean up any existing Team IDs and Styles to avoid duplicates
+          find . -name "project.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;//g' {} +
+          find . -name "project.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = [^;]*;//g' {} +
+          find . -name "project.pbxproj" -exec sed -i '' 's/ProvisioningStyle = [^;]*;//g' {} +
           
-          # Inject rules into xcconfig files for ultimate persistence
+          # 2. Inject Dummy Team and Manual Style into all buildSettings blocks
+          find . -name "project.pbxproj" -exec sed -i '' 's/buildSettings = {/buildSettings = {\n\t\t\t\tDEVELOPMENT_TEAM = "1234567890";\n\t\t\t\tProvisioningStyle = Manual;/g' {} +
+          
+          # 3. Force Bundle ID and Absolute No-Sign in xcconfig
+          find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
           echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
 
       - name: Surgical Podfile Injection
         run: |
-          # 2. Let flutter generate the standard Podfile first
+          # 3. Generate Podfile and inject No-Sign rules
           flutter build ios --release --no-codesign --config-only || true
-          
-          # Use 'sed' to surgically inject our rules into the existing post_install block
           sed -i '' '/flutter_additional_ios_build_settings(target)/a \
                 target.build_configurations.each do |config| \
                   config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "13.0" \
@@ -49,21 +49,10 @@ jobs:
                   config.build_settings["CODE_SIGN_IDENTITY"] = "" \
                 end' ios/Podfile
 
-      - name: Build with Injected Xcode Command (The Masterworks Bypass)
+      - name: Build iOS App (.app)
         run: |
-          # 3. Use xcodebuild directly with Flutter environment variables
-          cd ios
-          
-          # Extract flutter environment from Generated.xcconfig
-          while read -r line; do
-            export "$line"
-          done < <(grep "=" Flutter/Generated.xcconfig | sed 's/ //g')
-          
-          # Build specifically for iphoneos with signing forced OFF
-          xcodebuild build -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" DEVELOPMENT_TEAM="1234567890" \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO
+          # 4. Use official flutter build - satisfied by our v15 injections
+          flutter build ios --release --no-codesign --build-number=1 --build-name=1.0.0
 
       - name: Package IPA manually
         run: |
