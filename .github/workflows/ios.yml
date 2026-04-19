@@ -21,16 +21,20 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Strip Signing Requirements
+      - name: Prepare and Strip Signing Requirements
         run: |
-          # Surgically remove any signing requirements from the project files
-          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*;//g' ios/Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/DEVELOPMENT_TEAM = .*;//g' ios/Runner.xcodeproj/project.pbxproj
-          sed -i '' 's/CODE_SIGN_STYLE = Automatic;//g' ios/Runner.xcodeproj/project.pbxproj
+          # 1. Let flutter do its internal migration/upgrade first (it might fail but it upgrades the files)
+          flutter build ios --release --no-codesign --config-only || true
+          
+          # 2. Now surgically strip everything from the UPGRADED files
+          find . -name "*.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = "";/g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = "";/g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer";/CODE_SIGN_IDENTITY = "";/g' {} +
 
       - name: Build iOS App (.app)
         run: |
-          # Build the iOS app folder with strict 'No Code Signing' flags
+          # 3. Build the iOS app folder with strict 'No Code Signing'
           flutter build ios --release --no-codesign --build-number=1 --build-name=1.0.0
 
       - name: Package IPA manually
