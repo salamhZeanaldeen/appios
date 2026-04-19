@@ -52,30 +52,44 @@ jobs:
           # CRITICAL: Install CocoaPods to link plugins correctly
           cd ios && pod install
 
-      - name: Direct Xcode Orchestration (The Deep Bypass v17)
+      - name: Direct Xcode Orchestration (The Deep Bypass v18)
         run: |
           # 4. Build directly with xcodebuild, manually passing Flutter environment
           
           # Manually grab critical Flutter paths from Generated.xcconfig
-          # We use export to ensure sub-processes like scripts see them
-          export FLUTTER_ROOT=$(grep "FLUTTER_ROOT" ios/Flutter/Generated.xcconfig | cut -d'=' -f2)
-          export FLUTTER_APPLICATION_PATH=$(grep "FLUTTER_APPLICATION_PATH" ios/Flutter/Generated.xcconfig | cut -d'=' -f2)
-          export FLUTTER_TARGET=$(grep "FLUTTER_TARGET" ios/Flutter/Generated.xcconfig | cut -d'=' -f2)
+          # Using absolute paths to avoid confusion
+          CONFIG_FILE="ios/Flutter/Generated.xcconfig"
+          if [ ! -f "$CONFIG_FILE" ]; then echo "Error: Generated.xcconfig not found"; exit 1; fi
+          
+          export FLUTTER_ROOT=$(grep "FLUTTER_ROOT" "$CONFIG_FILE" | cut -d'=' -f2 | xargs)
+          export FLUTTER_APPLICATION_PATH=$(grep "FLUTTER_APPLICATION_PATH" "$CONFIG_FILE" | cut -d'=' -f2 | xargs)
+          export FLUTTER_TARGET=$(grep "FLUTTER_TARGET" "$CONFIG_FILE" | cut -d'=' -f2 | xargs)
+          
+          echo "Building with FLUTTER_ROOT: $FLUTTER_ROOT"
           
           cd ios
+          # Added -quiet to avoid flooding, but keeping the orchestration
           xcodebuild build -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER="" DEVELOPMENT_TEAM="1234567890" \
             FLUTTER_ROOT="$FLUTTER_ROOT" \
             FLUTTER_APPLICATION_PATH="$FLUTTER_APPLICATION_PATH" \
             FLUTTER_TARGET="$FLUTTER_TARGET" \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO COMPILER_INDEX_STORE_ENABLE=NO
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO COMPILER_INDEX_STORE_ENABLE=NO | xcpretty || true
 
       - name: Package IPA manually
         run: |
           # 5. Extract the app and zip it
+          # We search for the .app file as its location can vary slightly
           mkdir -p build/ios/iphoneos/Payload
-          APP_PATH=$(find build/ios/iphoneos -name "*.app" | head -n 1)
+          APP_PATH=$(find ios/build -name "*.app" -type d | head -n 1)
+          if [ -z "$APP_PATH" ]; then 
+            APP_PATH=$(find build/ios/iphoneos -name "*.app" -type d | head -n 1)
+          fi
+          
+          if [ -z "$APP_PATH" ]; then echo "Error: .app file not found"; exit 1; fi
+          
+          echo "Found app at: $APP_PATH"
           cp -r "$APP_PATH" build/ios/iphoneos/Payload/
           cd build/ios/iphoneos
           zip -r SovereignArchive.ipa Payload

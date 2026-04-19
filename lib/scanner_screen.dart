@@ -126,7 +126,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     if (kIsWeb) return;
     
     try {
-      final helper = getOcrHelper();
+      final helper = OcrHelper();
       final text = await helper.recognizeText(path);
       
       setState(() {
