@@ -1,3 +1,4 @@
+# Triggering public deployment for Sovereign Archive PWA
 name: Deploy Sovereign Web (PWA)
 
 on:
