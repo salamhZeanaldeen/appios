@@ -21,15 +21,20 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Hard-Reset Signing and Dummy Identity
+      - name: Hard-Reset Signing (The Final Strike v13)
         run: |
-          # 1. Force a unique Bundle ID and inject a DUMMY TEAM ID to satisfy Flutter checks
-          find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = "1234567890";/g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = "";/g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' {} +
+          # 1. Force Manual Provisioning and Dummy Team in project files
+          find . -name "project.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' {} +
+          # Inject Manual style and Dummy Team into build settings blocks
+          find . -name "project.pbxproj" -exec sed -i '' '/buildSettings = {/a \
+          				ProvisioningStyle = Manual; \
+          				DEVELOPMENT_TEAM = "1234567890";' {} +
           
-          # Inject rules into xcconfig files for ultimate persistence
+          # 2. Force Bundle ID and strip any persistent signing identities
+          find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_IDENTITY = [^;]*;/CODE_SIGN_IDENTITY = "";/g' {} +
+          
+          # 3. Inject Absolute No-Sign rules into Config files
           echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
