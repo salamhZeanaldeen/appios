@@ -5,13 +5,15 @@ import 'theme_provider.dart';
 import 'discovery_service.dart';
 import 'notification_manager.dart';
 
-import 'document_provider.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Notification Manager
-  await NotificationManager().init();
+  // Initialize Notification Manager only on native platforms
+  if (!kIsWeb) {
+    await NotificationManager().init();
+  }
   
   runApp(
     MultiProvider(

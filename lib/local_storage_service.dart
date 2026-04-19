@@ -1,6 +1,8 @@
-import 'dart:io';
+import 'dart:io' show File; // Import only what is needed and handle with kIsWeb
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi_web/sqflite_ffi_web.dart';
 import 'package:path_provider/path_provider.dart';
 
 class LocalStorageService {
@@ -18,12 +20,25 @@ class LocalStorageService {
   }
 
   Future<Database> _initDatabase() async {
-    String path = join(await getDatabasesPath(), 'sovereign_archive.db');
-    return await openDatabase(
-      path,
-      version: 1,
-      onCreate: _onCreate,
-    );
+    if (kIsWeb) {
+      // Web Initialization: Use FFI Web Factory
+      var factory = databaseFactoryFfiWeb;
+      return await factory.openDatabase(
+        'sovereign_archive.db',
+        options: OpenDatabaseOptions(
+          version: 1,
+          onCreate: _onCreate,
+        ),
+      );
+    } else {
+      // Mobile Initialization
+      String path = join(await getDatabasesPath(), 'sovereign_archive.db');
+      return await openDatabase(
+        path,
+        version: 1,
+        onCreate: _onCreate,
+      );
+    }
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -43,12 +58,20 @@ class LocalStorageService {
   }
 
   // Save image to permanent app storage
-  Future<String> saveImageLocally(File imageFile) async {
+  Future<String> saveImageLocally(dynamic imageFile) async {
+    if (kIsWeb) {
+      // On web, imageFile is typically a XFile or memory reference. 
+      // We return the path/url as-is or handle it as base64 if needed.
+      return imageFile is String ? imageFile : imageFile.path;
+    }
+    
+    // Mobile Logic
     final directory = await getApplicationDocumentsDirectory();
     final String fileName = 'doc_${DateTime.now().millisecondsSinceEpoch}${extension(imageFile.path)}';
     final String localPath = join(directory.path, fileName);
     
-    final File localFile = await imageFile.copy(localPath);
+    final File file = imageFile as File;
+    final File localFile = await file.copy(localPath);
     return localFile.path;
   }
 
