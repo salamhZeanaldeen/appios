@@ -9,6 +9,7 @@ import 'document_provider.dart';
 import 'notification_manager.dart';
 
 import 'platform_helper.dart';
+import 'ocr_helper.dart';
 
 // Conditionally import ML Kit only on native to avoid web build errors
 // We use dynamic and late initialization to keep the compiler happy.
@@ -124,10 +125,18 @@ class _ScannerScreenState extends State<ScannerScreen> {
   Future<void> _processImage(String path) async {
     if (kIsWeb) return;
     
-    // We use dynamic to invoke native-only libraries
     try {
-      // Dynamic import trick is not supported well in Flutter, so we use 
-      // the fact that this path is never reached on web.
+      final helper = getOcrHelper();
+      final text = await helper.recognizeText(path);
+      
+      setState(() {
+        _ocrText = text;
+        // Try to extract a title from the first line if title is empty
+        if (_title.isEmpty && text.isNotEmpty) {
+          _title = text.split('\n').first.trim();
+          if (_title.length > 50) _title = _title.substring(0, 47) + '...';
+        }
+      });
     } catch (e) {
       print('OCR Error: $e');
     } finally {

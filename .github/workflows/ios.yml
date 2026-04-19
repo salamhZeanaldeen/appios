@@ -35,10 +35,12 @@ jobs:
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
 
-      - name: Surgical Podfile Injection
+      - name: Surgical Podfile Injection and Install
         run: |
           # 3. Generate standard Podfile and inject No-Sign rules
-          flutter build ios --release --no-codesign --config-only || true
+          flutter build ios --release --no-codesign --config-only
+          
+          # Inject No-Sign rules into Podfile
           sed -i '' '/flutter_additional_ios_build_settings(target)/a \
                 target.build_configurations.each do |config| \
                   config.build_settings["IPHONEOS_DEPLOYMENT_TARGET"] = "13.0" \
@@ -46,23 +48,27 @@ jobs:
                   config.build_settings["CODE_SIGNING_REQUIRED"] = "NO" \
                   config.build_settings["CODE_SIGN_IDENTITY"] = "" \
                 end' ios/Podfile
+          
+          # CRITICAL: Install CocoaPods to link plugins correctly
+          cd ios && pod install
 
-      - name: Direct Xcode Orchestration (The Deep Bypass v16)
+      - name: Direct Xcode Orchestration (The Deep Bypass v17)
         run: |
           # 4. Build directly with xcodebuild, manually passing Flutter environment
-          cd ios
           
           # Manually grab critical Flutter paths from Generated.xcconfig
-          F_ROOT=$(grep "FLUTTER_ROOT" Flutter/Generated.xcconfig | cut -d'=' -f2)
-          F_APP_PATH=$(grep "FLUTTER_APPLICATION_PATH" Flutter/Generated.xcconfig | cut -d'=' -f2)
-          F_TARGET=$(grep "FLUTTER_TARGET" Flutter/Generated.xcconfig | cut -d'=' -f2)
+          # We use export to ensure sub-processes like scripts see them
+          export FLUTTER_ROOT=$(grep "FLUTTER_ROOT" ios/Flutter/Generated.xcconfig | cut -d'=' -f2)
+          export FLUTTER_APPLICATION_PATH=$(grep "FLUTTER_APPLICATION_PATH" ios/Flutter/Generated.xcconfig | cut -d'=' -f2)
+          export FLUTTER_TARGET=$(grep "FLUTTER_TARGET" ios/Flutter/Generated.xcconfig | cut -d'=' -f2)
           
+          cd ios
           xcodebuild build -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             PROVISIONING_PROFILE_SPECIFIER="" DEVELOPMENT_TEAM="1234567890" \
-            FLUTTER_ROOT="$F_ROOT" \
-            FLUTTER_APPLICATION_PATH="$F_APP_PATH" \
-            FLUTTER_TARGET="$F_TARGET" \
+            FLUTTER_ROOT="$FLUTTER_ROOT" \
+            FLUTTER_APPLICATION_PATH="$FLUTTER_APPLICATION_PATH" \
+            FLUTTER_TARGET="$FLUTTER_TARGET" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=NO COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Package IPA manually

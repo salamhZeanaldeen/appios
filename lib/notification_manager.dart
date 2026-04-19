@@ -27,7 +27,22 @@ class NotificationManager {
       iOS: initializationSettingsIOS,
     );
 
-    await _notificationsPlugin.initialize(initializationSettings);
+    await _notificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (details) {
+        print('Notification received: ${details.payload}');
+      },
+    );
+
+    // Explicitly request permissions for iOS
+    await _notificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin>()
+        ?.requestPermissions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
 
     // Explicitly request permissions for Android 13+
     await _notificationsPlugin
