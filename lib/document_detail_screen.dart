@@ -1,11 +1,11 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:io' if (dart.library.html) 'package:sqflite/sqflite.dart' show File; // Safe import for kIsWeb
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart' as intl;
 import 'package:share_plus/share_plus.dart';
 import 'document_provider.dart';
 import 'package:provider/provider.dart';
 import 'notification_manager.dart';
+import 'platform_helper.dart';
 
 class DocumentDetailScreen extends StatefulWidget {
   final Map<String, dynamic> doc;
@@ -35,8 +35,8 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     _currentDoc = Map.from(widget.doc);
     _titleController = TextEditingController(text: _currentDoc['title']);
     _currentStatus = _currentDoc['status'] ?? 'في الانتظار';
-    if (_currentDoc['status'] == 'قيد الانتظار') _currentStatus = 'في الانتظار'; // Migration
-    if (_currentDoc['status'] == 'تم الرد' || _currentDoc['status'] == 'مؤرشف') _currentStatus = 'تم الإنجاز'; // Migration
+    if (_currentDoc['status'] == 'قيد الانتظار') _currentStatus = 'في الانتظار'; 
+    if (_currentDoc['status'] == 'تم الرد' || _currentDoc['status'] == 'مؤرشف') _currentStatus = 'تم الإنجاز';
     
     if (_currentDoc['deadline'] != null) {
       _selectedDeadline = DateTime.parse(_currentDoc['deadline']);
@@ -50,7 +50,7 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       await provider.updateDocument(_currentDoc['id'], {
         'status': 'تم الإنجاز',
       });
-      await NotificationManager().cancelNotification(_currentDoc['id']);
+      if (!kIsWeb) await NotificationManager().cancelNotification(_currentDoc['id']);
       
       setState(() {
         _currentDoc['status'] = 'تم الإنجاز';
@@ -68,15 +68,9 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
     setState(() => _isDownloading = true);
     try {
       if (kIsWeb) {
-        // On web, share as text/link or simple share
         await Share.share('مشاركة مراسلة: ${_currentDoc['title']}\n$localPath');
       } else {
-        final file = File(localPath);
-        if (await file.exists()) {
-          await Share.shareXFiles([XFile(localPath)], text: 'مشاركة مراسلة: ${_currentDoc['title']}');
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الملف غير موجود محلياً')));
-        }
+        await Share.shareXFiles([XFile(localPath)], text: 'مشاركة مراسلة: ${_currentDoc['title']}');
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ في المشاركة: $e')));
@@ -98,7 +92,6 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
         'alert_at': _selectedDeadline != null ? _selectedDeadline!.subtract(const Duration(hours: 24)).toIso8601String() : null,
       });
 
-      // Handle Notifications
       if (_currentStatus == 'تم الإنجاز') {
         if (!kIsWeb) await NotificationManager().cancelNotification(_currentDoc['id']);
       } else if (_selectedDeadline != null) {
@@ -271,95 +264,58 @@ class _DocumentDetailScreenState extends State<DocumentDetailScreen> {
       borderRadius: BorderRadius.circular(20),
       child: InteractiveViewer(
         maxScale: 5.0,
-        child: kIsWeb 
-          ? Image.network(
-            localPath,
-            fit: BoxFit.contain,
-            width: double.infinity,
-            errorBuilder: (context, error, stackTrace) => Container(
-              height: 200, color: Colors.white10, 
-              child: const Center(child: Icon(Icons.broken_image, color: Colors.white24))
-            ),
-          )
-          : Image.file(
-            File(localPath),
-            fit: BoxFit.contain,
-            width: double.infinity,
-            errorBuilder: (context, error, stackTrace) => Container(
-              height: 200, color: Colors.white10, 
-              child: const Center(child: Icon(Icons.broken_image, color: Colors.white24))
-            ),
-          ),
+        child: getPlatformImage(localPath),
       ),
     );
   }
 
   Widget _buildInfoGrid(BuildContext context) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: 12,
-      crossAxisSpacing: 12,
-      childAspectRatio: 2.5,
-      children: [
-        _infoCard('النوع', _currentDoc['type'] ?? 'غير محدد', Icons.category_outlined),
-        _infoCard('الحالة', _currentDoc['status'] ?? 'غير محدد', Icons.info_outline),
-        _infoCard('التاريخ', _formatDate(_currentDoc['created_at']), Icons.calendar_today_outlined),
-        _infoCard(
-          'الموعد النهائي', 
-          _currentDoc['deadline'] != null ? _formatDate(_currentDoc['deadline']) : 'لا يوجد', 
-          Icons.timer_outlined,
-          isUrgent: _currentDoc['deadline'] != null,
-        ),
-      ],
-    );
-  }
-
-  Widget _buildOCRSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('النص المستخرج (OCR):', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 12),
-        Container(
-          padding: const EdgeInsets.all(16),
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(15),
-          ),
-          child: SelectableText(
-            _currentDoc['ocr_text'] ?? 'جاري المعالجة...',
-            style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _infoCard(String label, String value, IconData icon, {bool isUrgent = false}) {
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(12)),
-      child: Row(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20)),
+      child: Column(
         children: [
-          Icon(icon, size: 16, color: isUrgent ? Colors.orangeAccent : Colors.white38),
-          const SizedBox(width: 8),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(label, style: const TextStyle(color: Colors.white38, fontSize: 9)),
-            Text(value, style: TextStyle(color: isUrgent ? Colors.orangeAccent : Colors.white70, fontSize: 10, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
-          ])),
+          _infoRow(Icons.label_important_outline, 'النوع', _currentDoc['type'] ?? 'غير محدد'),
+          const Divider(color: Colors.white10),
+          _infoRow(Icons.timer_outlined, 'الحالة', _currentStatus, color: _currentStatus == 'تم الإنجاز' ? Colors.greenAccent : Colors.orangeAccent),
+          const Divider(color: Colors.white10),
+          _infoRow(Icons.event_note, 'تاريخ الإضافة', intl.DateFormat('yyyy/MM/dd').format(DateTime.parse(_currentDoc['created_at'] ?? DateTime.now().toIso8601String()))),
         ],
       ),
     );
   }
 
-  String _formatDate(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final dt = DateTime.parse(dateStr);
-      return intl.DateFormat('yyyy/MM/dd').format(dt);
-    } catch (e) { return dateStr; }
+  Widget _infoRow(IconData icon, String label, String value, {Color color = Colors.white70}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.blueAccent),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: Colors.white60, fontSize: 14)),
+          const Spacer(),
+          Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOCRSection() {
+    final ocrText = _currentDoc['ocr_text'] as String?;
+    if (ocrText == null || ocrText.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('محتوى المراسلة (OCR)', style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(15),
+          decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(15)),
+          child: Text(ocrText, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+        ),
+      ],
+    );
   }
 }

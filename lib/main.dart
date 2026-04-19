@@ -6,6 +6,7 @@ import 'discovery_service.dart';
 import 'notification_manager.dart';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'document_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
