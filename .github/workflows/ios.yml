@@ -11,13 +11,13 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.19.0' # Matches a stable version for maximum reliability
+          flutter-version: '3.19.0'
 
       - name: Get dependencies
         run: flutter pub get
@@ -25,11 +25,10 @@ jobs:
       - name: Build iOS IPA
         run: |
           # Build a release IPA without code signing
-          # This allows the user to download and sideload it using AltStore or Sideloadly
           flutter build ipa --release --no-codesign
 
       - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Sovereign-Archive-iOS
           path: build/ios/ipa/*.ipa
