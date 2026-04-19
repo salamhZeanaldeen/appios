@@ -21,10 +21,17 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Strip Signing Requirements
+        run: |
+          # Surgically remove any signing requirements from the project files
+          sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = .*;//g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/DEVELOPMENT_TEAM = .*;//g' ios/Runner.xcodeproj/project.pbxproj
+          sed -i '' 's/CODE_SIGN_STYLE = Automatic;//g' ios/Runner.xcodeproj/project.pbxproj
+
       - name: Build iOS App (.app)
         run: |
-          # Build the iOS app folder without code signing
-          flutter build ios --release --no-codesign
+          # Build the iOS app folder with strict 'No Code Signing' flags
+          flutter build ios --release --no-codesign --build-number=1 --build-name=1.0.0
 
       - name: Package IPA manually
         run: |
