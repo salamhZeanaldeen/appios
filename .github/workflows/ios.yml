@@ -21,12 +21,13 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Hard-Reset Signing and Bundle ID
+      - name: Hard-Reset Signing and Dummy Identity
         run: |
-          # 1. Force a unique Bundle ID and strip all signing requirements
+          # 1. Force a unique Bundle ID and inject a DUMMY TEAM ID to satisfy Flutter checks
           find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;//g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;//g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = "1234567890";/g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = "";/g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' {} +
           
           # Inject rules into xcconfig files for ultimate persistence
           echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
@@ -35,17 +36,14 @@ jobs:
 
       - name: Inject Surgical Podfile
         run: |
-          # Create a fresh, perfect Podfile with all our rules hard-coded
+          # 2. Create a fresh, perfect Podfile with all our rules hard-coded
           cat <<EOF > ios/Podfile
           platform :ios, '13.0'
-          
           target 'Runner' do
             use_frameworks!
             use_modular_headers!
-          
             flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
           end
-          
           post_install do |installer|
             installer.pods_project.targets.each do |target|
               flutter_additional_ios_build_settings(target)
@@ -59,13 +57,10 @@ jobs:
           end
           EOF
 
-      - name: Build with Direct Xcode Command (The Surgical Bypass)
+      - name: Build iOS App (.app)
         run: |
-          # 3. Manually trigger xcodebuild with strict overrides
-          cd ios
-          xcodebuild build -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            PROVISIONING_PROFILE_SPECIFIER="" DEVELOPMENT_TEAM=""
+          # 3. Use flutter build but satisfy it with our dummy identity
+          flutter build ios --release --no-codesign --build-number=1 --build-name=1.0.0
 
       - name: Package IPA manually
         run: |
