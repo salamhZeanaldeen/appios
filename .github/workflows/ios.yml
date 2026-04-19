@@ -21,20 +21,24 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Prepare and Strip Signing Requirements
+      - name: Hard-Reset Signing and Bundle ID
         run: |
-          # 1. Let flutter do its internal migration/upgrade first (it might fail but it upgrades the files)
-          flutter build ios --release --no-codesign --config-only || true
+          # 1. Force a unique Bundle ID to avoid generic conflicts
+          find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
           
-          # 2. Now surgically strip everything from the UPGRADED files
-          find . -name "*.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = "";/g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;/PROVISIONING_PROFILE_SPECIFIER = "";/g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_IDENTITY = "iPhone Developer";/CODE_SIGN_IDENTITY = "";/g' {} +
+          # 2. Deep clean every possible signing flag
+          find . -name "*.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;//g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;//g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = [^;]*;/CODE_SIGN_STYLE = Manual;/g' {} +
+          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_IDENTITY = [^;]*;/CODE_SIGN_IDENTITY = "";/g' {} +
 
       - name: Build iOS App (.app)
+        env:
+          CODE_SIGNING_ALLOWED: NO
+          CODE_SIGNING_REQUIRED: NO
+          CODE_SIGN_IDENTITY: ""
         run: |
-          # 3. Build the iOS app folder with strict 'No Code Signing'
+          # 3. Build with absolute 'No Sign' enforcement
           flutter build ios --release --no-codesign --build-number=1 --build-name=1.0.0
 
       - name: Package IPA manually
