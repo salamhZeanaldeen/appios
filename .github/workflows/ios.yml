@@ -21,17 +21,15 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Hard-Reset Signing and Dummy Identity (v15 Master)
+      - name: Hard-Reset Signing and Dummy Identity
         run: |
-          # 1. Clean up any existing Team IDs and Styles to avoid duplicates
+          # 1. Clean up and force Manual Style/Dummy Team
           find . -name "project.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;//g' {} +
           find . -name "project.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = [^;]*;//g' {} +
           find . -name "project.pbxproj" -exec sed -i '' 's/ProvisioningStyle = [^;]*;//g' {} +
-          
-          # 2. Inject Dummy Team and Manual Style into all buildSettings blocks
           find . -name "project.pbxproj" -exec sed -i '' 's/buildSettings = {/buildSettings = {\n\t\t\t\tDEVELOPMENT_TEAM = "1234567890";\n\t\t\t\tProvisioningStyle = Manual;/g' {} +
           
-          # 3. Force Bundle ID and Absolute No-Sign in xcconfig
+          # 2. Force Bundle ID and No-Sign xcconfig
           find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
           echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
           echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
@@ -39,7 +37,7 @@ jobs:
 
       - name: Surgical Podfile Injection
         run: |
-          # 3. Generate Podfile and inject No-Sign rules
+          # 3. Generate standard Podfile and inject No-Sign rules
           flutter build ios --release --no-codesign --config-only || true
           sed -i '' '/flutter_additional_ios_build_settings(target)/a \
                 target.build_configurations.each do |config| \
@@ -49,14 +47,27 @@ jobs:
                   config.build_settings["CODE_SIGN_IDENTITY"] = "" \
                 end' ios/Podfile
 
-      - name: Build iOS App (.app)
+      - name: Direct Xcode Orchestration (The Deep Bypass v16)
         run: |
-          # 4. Use official flutter build - satisfied by our v15 injections
-          flutter build ios --release --no-codesign --build-number=1 --build-name=1.0.0
+          # 4. Build directly with xcodebuild, manually passing Flutter environment
+          cd ios
+          
+          # Manually grab critical Flutter paths from Generated.xcconfig
+          F_ROOT=$(grep "FLUTTER_ROOT" Flutter/Generated.xcconfig | cut -d'=' -f2)
+          F_APP_PATH=$(grep "FLUTTER_APPLICATION_PATH" Flutter/Generated.xcconfig | cut -d'=' -f2)
+          F_TARGET=$(grep "FLUTTER_TARGET" Flutter/Generated.xcconfig | cut -d'=' -f2)
+          
+          xcodebuild build -workspace Runner.xcworkspace -scheme Runner -configuration Release -sdk iphoneos \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            PROVISIONING_PROFILE_SPECIFIER="" DEVELOPMENT_TEAM="1234567890" \
+            FLUTTER_ROOT="$F_ROOT" \
+            FLUTTER_APPLICATION_PATH="$F_APP_PATH" \
+            FLUTTER_TARGET="$F_TARGET" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=NO COMPILER_INDEX_STORE_ENABLE=NO
 
       - name: Package IPA manually
         run: |
-          # 4. Find the generated .app and package it into a .ipa
+          # 5. Extract the app and zip it
           mkdir -p build/ios/iphoneos/Payload
           APP_PATH=$(find build/ios/iphoneos -name "*.app" | head -n 1)
           cp -r "$APP_PATH" build/ios/iphoneos/Payload/
