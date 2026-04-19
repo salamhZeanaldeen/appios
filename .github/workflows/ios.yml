@@ -21,14 +21,22 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build iOS IPA
+      - name: Build iOS App (.app)
         run: |
-          # Build a release IPA without code signing
-          flutter build ipa --release --no-codesign
+          # Build the iOS app folder without code signing
+          flutter build ios --release --no-codesign
+
+      - name: Package IPA manually
+        run: |
+          # A professional trick: Create a Payload folder and zip the .app into a .ipa
+          mkdir -p build/ios/iphoneos/Payload
+          cp -r build/ios/iphoneos/Runner.app build/ios/iphoneos/Payload
+          cd build/ios/iphoneos
+          zip -r SovereignArchive.ipa Payload
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Sovereign-Archive-iOS
-          path: build/ios/ipa/*.ipa
+          path: build/ios/iphoneos/SovereignArchive.ipa
           retention-days: 7
