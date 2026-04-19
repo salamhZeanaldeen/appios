@@ -21,16 +21,21 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Hard-Reset Signing and Bundle ID
+      - name: Deep Injection - Disable Signing
         run: |
-          # 1. Force a unique Bundle ID to avoid generic conflicts
-          find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
+          # 1. Inject No-Sign rules directly into Xcode Configuration files
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Release.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Release.xcconfig
           
-          # 2. Deep clean every possible signing flag
+          echo "CODE_SIGNING_ALLOWED=NO" >> ios/Flutter/Debug.xcconfig
+          echo "CODE_SIGNING_REQUIRED=NO" >> ios/Flutter/Debug.xcconfig
+          echo "CODE_SIGN_IDENTITY=" >> ios/Flutter/Debug.xcconfig
+
+          # 2. Force Bundle ID and strip any remaining Team IDs
+          find . -name "project.pbxproj" -exec sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = com.sovereign.archive.mobile;/g' {} +
           find . -name "*.pbxproj" -exec sed -i '' 's/DEVELOPMENT_TEAM = [^;]*;//g' {} +
           find . -name "*.pbxproj" -exec sed -i '' 's/PROVISIONING_PROFILE_SPECIFIER = [^;]*;//g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_STYLE = [^;]*;/CODE_SIGN_STYLE = Manual;/g' {} +
-          find . -name "*.pbxproj" -exec sed -i '' 's/CODE_SIGN_IDENTITY = [^;]*;/CODE_SIGN_IDENTITY = "";/g' {} +
 
       - name: Build iOS App (.app)
         env:
